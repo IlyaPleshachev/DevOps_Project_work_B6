@@ -1,0 +1,154 @@
+---
+- hosts: app
+  become: yes
+
+# Ubuntu - Install Docker  
+
+  vars:    
+    docker_required_packages:
+      - "apt-transport-https"
+      - "ca-certificates"
+      - "curl"
+      - "gnupg-agent"
+      - "software-properties-common"
+      - "python3-pip"
+      - "python3-setuptools"
+    docker_gpg_url: https://download.docker.com/linux/ubuntu/gpg
+    docker_repo: deb https://download.docker.com/linux/ubuntu focal stable
+    docker_packges:
+      - "docker-ce"
+      - "docker-ce-cli"
+      - "containerd.io"
+    docker_compose_url: https://github.com/docker/compose/releases/download/v2.3.4/docker-compose-linux-x86_64
+    container_name: edu-nginx
+    container_image: nginx:alpine
+    container_command: -g daemon off
+
+  tasks:
+  - name: Install Aptitude
+    apt: 
+      name=aptitude 
+      state=latest 
+      update_cache=yes 
+      force_apt_get=yes
+    tags: ubuntu
+    when: ansible_distribution == "Ubuntu"
+
+  - name: Install Dependencies
+    apt: 
+      name={{ docker_required_packages }} 
+      state=latest 
+      update_cache=yes
+    tags: ubuntu
+    when: ansible_distribution == "Ubuntu"
+
+  - name: Add signing key GPG for Docker
+    apt_key:
+      url: "{{ docker_gpg_url }}"
+      state: present
+    tags: ubuntu
+    when: ansible_distribution == "Ubuntu"
+
+  - name: Add apt repository for Docker
+    apt_repository:
+      repo: "{{ docker_repo }}"
+      state: present
+    tags: ubuntu
+    when: ansible_distribution == "Ubuntu"
+
+  - name: Install Docker
+    apt: 
+      name={{ docker_packages }} 
+      state=latest 
+      update_cache=yes
+    tags: ubuntu
+    when: ansible_distribution == "Ubuntu"
+
+  - name: Install Python Docker module
+    pip:
+      name: docker
+    tags: ubuntu
+    when: ansible_distribution == "Ubuntu"
+
+  - name: Install Docker Compose
+    get_url:
+      url: "{{ docker_compose_url }}"
+      dest: /usr/local/bin/docker-compose
+      mode: u+x,g+x,o+x
+    tags: ubuntu
+    when: ansible_distribution == "Ubuntu"
+
+  - name: Pull Nginx Docker image
+    community.docker.docker_image:
+      name: "{{ container_image }}"
+      source: pull
+    tags: ubuntu
+    when: ansible_distribution == "Ubuntu"
+
+  - name: Create Nginx container
+    community.docker.docker_container:
+      name: "{{ container_name }}"
+      image: "{{ container_image }}"
+      command: "{{ container_command }}"
+      state: present
+    tags: ubuntu
+    when: ansible_distribution == "Ubuntu"
+
+
+# CentOS - Install Docker
+  - name: Remove docker if installed from CentOS repo
+    yum:
+     name: "{{ item }}"
+     state: removed
+    with_items:
+        - docker
+        - docker-client
+        - docker-client-latest
+        - docker-common
+        - docker-latest
+        - docker-latest-logrotate
+        - docker-logrotate
+        - docker-engine
+    tags: centos
+    when: ansible_distribution == "CentOS"
+
+  - name: Install yum utils
+    yum:
+      name: "{{ item }}"
+      state: latest
+    with_items:
+        - yum-utils
+        - device-mapper-persistent-data
+        - lvm2
+    tags: centos
+    when: ansible_distribution == "CentOS"
+
+  - name: Add Docker repo
+    get_url:
+      url: https://download.docker.com/linux/centos/docker-ce.repo
+      dest: /etc/yum.repos.d/docker-ce.repo
+    tags: centos
+    when: ansible_distribution == "CentOS"
+
+  - name: Install Docker
+    yum:
+      name: docker-ce
+      state: latest
+    tags: centos
+    when: ansible_distribution == "CentOS"
+
+  - name: Start Docker service
+    service:
+      name: docker
+      state: started
+      enabled: yes
+    tags: centos
+    when: ansible_distribution == "CentOS"
+ 
+  - name: Add user ilya_p to docker group
+    user:
+        name: ilya_p
+        groups: docker
+        append: yes
+    tags: centos
+    when: ansible_distribution == "CentOS"
